@@ -1,0 +1,16 @@
+[Unit]
+Description=ASUS Zenbook Duo bottom-screen brightness sync
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/duo-brightness-sync
+Restart=always
+RestartSec=2
+# Members of group "video" already have write access to backlight sysfs,
+# but running as root is simpler and matches how the existing units behave.
+User=root
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Mirror the top-screen (intel_backlight) brightness onto the bottom screen
+# (card1-eDP-2-backlight) on the ASUS Zenbook Duo UX8406MA.
+#
+# Both panels expose their own backlight in /sys/class/backlight, but the
+# Fn brightness keys and GNOME/Cinnamon's brightness slider only write to
+# intel_backlight. This daemon watches intel_backlight and copies the value
+# (scaled by max_brightness) over to the bottom panel.
+
+set -u
+
+TOP=/sys/class/backlight/intel_backlight
+BOTTOM=/sys/class/backlight/card1-eDP-2-backlight
+
+log() { printf '%s duo-brightness-sync: %s\n' "$(date '+%H:%M:%S')" "$*"; }
+
+wait_for_bottom() {
+  # eDP-2 backlight disappears when the bottom screen is off (duo top).
+  # Block until it comes back instead of crashing.
+  while [ ! -w "$BOTTOM/brightness" ]; do
+    sleep 2
+  done
+}
+
+sync_once() {
+  [ -r "$TOP/brightness" ] || return 0
+  [ -w "$BOTTOM/brightness" ] || return 0
+
+  local top_cur top_max bot_max scaled
+  top_cur=$(cat "$TOP/brightness")
+  top_max=$(cat "$TOP/max_brightness")
+  bot_max=$(cat "$BOTTOM/max_brightness")
+
+  # scale = round(top_cur * bot_max / top_max)
+  scaled=$(( (top_cur * bot_max + top_max / 2) / top_max ))
+  [ "$scaled" -lt 1 ] && scaled=1
+  [ "$scaled" -gt "$bot_max" ] && scaled=$bot_max
+
+  echo "$scaled" > "$BOTTOM/brightness" 2>/dev/null || return 0
+}
+
+if [ ! -r "$TOP/brightness" ]; then
+  log "missing $TOP — nothing to sync"
+  exit 1
+fi
+
+log "watching $TOP/brightness"
+while true; do
+  wait_for_bottom
+  sync_once
+  # -q quiet, single event. Loop reopens the watch if the file disappears.
+  inotifywait -q -e modify "$TOP/brightness" >/dev/null 2>&1 || sleep 1
+done
