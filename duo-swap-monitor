@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# duo-swap-monitor — swap every visible window between the top and bottom
+# physical panels of the ASUS Zenbook Duo. Each press toggles all normal
+# windows across the monitor boundary. No-op in `duo top` mode (only one
+# panel active).
+#
+# We intentionally do *not* change xrandr --primary or any monitor positions
+# from here. In testing, doing so triggered Cinnamon's auto-window-relocation
+# that races against our wmctrl moves and ends up reverting them. Keeping
+# monitor topology constant makes the swap reliable.
+set -u
+
+LAYOUT=$(xrandr --query)
+ACTIVE_BOTTOM=$(awk '$1=="eDP-2" && $2=="connected" {
+  if (match($0, /\+[0-9]+\+[0-9]+/)) print "yes"; exit
+}' <<<"$LAYOUT")
+if [ -z "$ACTIVE_BOTTOM" ]; then
+  exit 0
+fi
+
+BOUNDARY=$(awk '$1=="eDP-2" && $2=="connected" {
+  if (match($0, /\+[0-9]+\+([0-9]+)/, a)) print a[1];
+  exit
+}' <<<"$LAYOUT")
+BOUNDARY=${BOUNDARY:-1800}
+
+shift_window() {
+  local wid_raw="$1" delta="$2"
+  local wid; wid=$(printf "0x%08x" "$((wid_raw))")
+
+  local state; state=$(xprop -id "$wid_raw" _NET_WM_STATE 2>/dev/null)
+  local max_v=false max_h=false
+  grep -q MAXIMIZED_VERT <<<"$state" && max_v=true
+  grep -q MAXIMIZED_HORZ <<<"$state" && max_h=true
+
+  if $max_v || $max_h; then
+    wmctrl -i -r "$wid" -b remove,maximized_vert,maximized_horz
+    sleep 0.05
+  fi
+
+  local line; line=$(wmctrl -lG | awk -v w="$wid" 'tolower($1)==tolower(w) {print; exit}')
+  [ -z "$line" ] && return
+  local X Y W H
+  X=$(awk '{print $3}' <<<"$line")
+  Y=$(awk '{print $4}' <<<"$line")
+  W=$(awk '{print $5}' <<<"$line")
+  H=$(awk '{print $6}' <<<"$line")
+
+  # wmctrl -e accepts frame coordinates while wmctrl -lG reports the client
+  # position. Offset by frame_top + client's relative offset within the
+  # frame so the result lands at the intended position.
+  local fe; fe=$(xprop -id "$wid_raw" _NET_FRAME_EXTENTS 2>/dev/null | sed 's/.*= //; s/,//g')
+  local fe_l fe_t
+  read -r fe_l _ fe_t _ <<<"${fe:-0 0 0 0}"
+  fe_l=${fe_l:-0}; fe_t=${fe_t:-0}
+
+  local rel; rel=$(xwininfo -id "$wid_raw" 2>/dev/null | awk '
+    /Relative upper-left X/ {x=$NF}
+    /Relative upper-left Y/ {y=$NF; print x" "y; exit}
+  ')
+  local rel_x rel_y
+  read -r rel_x rel_y <<<"${rel:-0 0}"
+  rel_x=${rel_x:-0}; rel_y=${rel_y:-0}
+
+  local new_y=$((Y + delta))
+  local sent_x=$((X - fe_l - rel_x))
+  local sent_y=$((new_y - fe_t - rel_y))
+
+  wmctrl -i -r "$wid" -e "0,$sent_x,$sent_y,$W,$H"
+
+  if $max_v && $max_h; then
+    wmctrl -i -r "$wid" -b add,maximized_vert,maximized_horz
+  elif $max_v; then
+    wmctrl -i -r "$wid" -b add,maximized_vert
+  elif $max_h; then
+    wmctrl -i -r "$wid" -b add,maximized_horz
+  fi
+}
+
+while read -r WID _ X Y W H _; do
+  [ -z "$WID" ] && continue
+  TYPE=$(xprop -id "$WID" _NET_WM_WINDOW_TYPE 2>/dev/null)
+  if grep -qE "DESKTOP|DOCK|SPLASH|NOTIFICATION|TOOLTIP|MENU|POPUP|DND" <<<"$TYPE"; then
+    continue
+  fi
+  MID=$((Y + H / 2))
+  if [ "$MID" -lt "$BOUNDARY" ]; then
+    shift_window "$WID" "$BOUNDARY"
+  else
+    shift_window "$WID" "-$BOUNDARY"
+  fi
+done < <(wmctrl -lG)

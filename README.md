@@ -8,6 +8,7 @@ Dual-screen and dual-touchscreen helper for the **ASUS Zenbook Duo (UX8406MA)** 
 - **Press the dedicated dual-screen button (right of F12) → toggles the bottom screen on/off.**
 - F5 / F6 on the magnetic keyboard dim/brighten both screens (and external keyboards keep F5/F6 as F5/F6).
 - The Cinnamon brightness slider also dims both screens together.
+- F8 on the magnetic keyboard moves every application window to the opposite physical screen.
 
 ## Install
 
@@ -18,7 +19,7 @@ cd zenbook-duo-ux8406ma-screen-fix
 ./install.sh
 ```
 
-The installer puts `duo`, `duo-screen-toggle`, and `duo-brightness-sync` in `/usr/local/bin`, adds an autostart entry for `duo watch-displays`, enables `duo-screen-toggle.service` as a systemd user unit, and enables `duo-brightness-sync.service` as a systemd system unit. Log out and back in (or run `/usr/local/bin/duo watch-displays &`) to start the keyboard-attach helper. The button handler and brightness sync are already running after install.
+The installer puts `duo`, `duo-screen-toggle`, `duo-brightness-sync`, and `duo-swap-monitor` in `/usr/local/bin`, adds an autostart entry for `duo watch-displays`, enables `duo-screen-toggle.service` as a systemd user unit, enables `duo-brightness-sync.service` as a systemd system unit, installs the udev keyboard remap, and adds a Cinnamon custom keybinding so F8 (remapped to `XF86Launch1` on the magnetic keyboard) runs `duo-swap-monitor`. Log out and back in (or run `/usr/local/bin/duo watch-displays &`) to start the keyboard-attach helper. The button handler and brightness sync are already running after install.
 
 ## Manual commands
 
@@ -51,6 +52,16 @@ journalctl -u duo-brightness-sync.service -f
 ```
 
 There is also an `asus_screenpad` backlight node exposed by `asus-nb-wmi` on this hardware, but it doesn't actually control the UX8406MA's bottom OLED — `card1-eDP-2-backlight` is the one that works.
+
+## How F8 swaps windows between the two screens
+
+The magnetic keyboard's F8 is remapped via udev hwdb to `KEY_PROG1` (X11 keysym `XF86Launch1`), and a Cinnamon custom keybinding runs `/usr/local/bin/duo-swap-monitor` whenever that keysym fires. The script enumerates every normal window with `wmctrl -lG`, decides which physical panel each one is on by comparing its vertical midpoint to `eDP-2`'s Y offset from `xrandr`, and shifts it across the boundary with `wmctrl -e`. Maximized windows are temporarily unmaximized, moved, then re-maximized so they re-snap to the new screen.
+
+`wmctrl -e` accepts frame coordinates while `wmctrl -lG` reports the client position, so the script offsets the sent coordinates by `_NET_FRAME_EXTENTS` + the client's relative offset within its frame to land windows exactly where they should. Desktop, dock, splash, and other non-normal windows (including the Cinnamon panel) are skipped — only application windows move. In `duo top` mode the swap is a no-op because only one panel is active.
+
+The script intentionally does not change `xrandr --primary` or any monitor positions. In testing, doing so triggered Cinnamon's auto-window-relocation in a way that raced against the `wmctrl` moves and ended up reverting them. Keeping monitor topology constant makes the swap reliable on every press.
+
+The remap is scoped to the magnetic keyboard's USB/Bluetooth IDs, so F8 on external keyboards still produces a normal F8.
 
 ## How F5 / F6 become brightness keys
 
