@@ -1,0 +1,24 @@
+# Remap F5 and F6 to brightness down/up on the ASUS Zenbook Duo (UX8406MA)
+# detachable magnetic keyboard. The keyboard's firmware does not translate
+# Fn+F5 / Fn+F6 to brightness keysyms (Fn is local and emits nothing on
+# the F-row), so F5/F6 always come through as plain KEY_F5 / KEY_F6.
+# Cinnamon's brightness bindings listen for XF86MonBrightnessUp/Down, so
+# brightness keys appear dead by default.
+#
+# Scancodes captured via evdev MSC_SCAN:
+#   F5 -> 0x7003e (HID page 0x07, usage 0x3e)
+#   F6 -> 0x7003f (HID page 0x07, usage 0x3f)
+#
+# The keyboard reports as Bluetooth (b0005 vid=0B05 pid=1B2D) when detached
+# and as USB (b0003 vid=0B05 pid=1B2C) when docked, so both buses are
+# covered. Scoped to vid/pid, so external keyboards keep F5/F6 as F5/F6.
+
+# Bluetooth (detached)
+evdev:input:b0005v0B05p1B2D*
+ KEYBOARD_KEY_7003e=brightnessdown
+ KEYBOARD_KEY_7003f=brightnessup
+
+# USB (docked)
+evdev:input:b0003v0B05p1B2C*
+ KEYBOARD_KEY_7003e=brightnessdown
+ KEYBOARD_KEY_7003f=brightnessup

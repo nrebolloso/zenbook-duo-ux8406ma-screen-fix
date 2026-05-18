@@ -28,6 +28,11 @@ sudo install -m 644 -o root -g root "$SCRIPT_DIR/duo-brightness-sync.service" /e
 sudo systemctl daemon-reload
 sudo systemctl enable --now duo-brightness-sync.service
 
+echo "Installing udev keyboard remap (F5/F6 -> brightness on the magnetic keyboard)..."
+sudo install -m 644 -o root -g root "$SCRIPT_DIR/61-zenbook-duo-keyboard.hwdb" /etc/udev/hwdb.d/61-zenbook-duo-keyboard.hwdb
+sudo systemd-hwdb update
+sudo udevadm trigger --subsystem-match=input --action=change
+
 echo
 echo "Installed. Either log out and back in, or run:"
 echo "  /usr/local/bin/duo watch-displays &"

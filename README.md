@@ -6,7 +6,8 @@ Dual-screen and dual-touchscreen helper for the **ASUS Zenbook Duo (UX8406MA)** 
 - Attach the keyboard → bottom screen turns off, top screen becomes primary.
 - Touch always lands on the screen you actually touched, in either mode.
 - **Press the dedicated dual-screen button (right of F12) → toggles the bottom screen on/off.**
-- Brightness keys (and the Cinnamon brightness slider) now dim both screens together.
+- F5 / F6 on the magnetic keyboard dim/brighten both screens (and external keyboards keep F5/F6 as F5/F6).
+- The Cinnamon brightness slider also dims both screens together.
 
 ## Install
 
@@ -50,6 +51,14 @@ journalctl -u duo-brightness-sync.service -f
 ```
 
 There is also an `asus_screenpad` backlight node exposed by `asus-nb-wmi` on this hardware, but it doesn't actually control the UX8406MA's bottom OLED — `card1-eDP-2-backlight` is the one that works.
+
+## How F5 / F6 become brightness keys
+
+The detachable magnetic keyboard's firmware doesn't translate Fn+F5 / Fn+F6 to brightness keysyms — Fn is local and emits nothing on the F-row, so the keys always come through as plain `KEY_F5` / `KEY_F6`. Cinnamon's brightness bindings listen for `XF86MonBrightnessUp/Down`, so by default the brightness keys appear dead.
+
+`61-zenbook-duo-keyboard.hwdb` is a udev keyboard remap that rewrites the scancodes `0x7003e` (F5) and `0x7003f` (F6) to `brightnessdown` / `brightnessup` — but only on the keyboard with USB ID `0B05:1B2C` (docked) or Bluetooth ID `0B05:1B2D` (detached). External keyboards keep F5/F6 as F5/F6.
+
+The installer runs `systemd-hwdb update` and `udevadm trigger` to apply the map without a reboot. If brightness keys still don't respond after install, unplug/replug the keyboard (or toggle Bluetooth) so it gets re-evaluated against the new hwdb.
 
 ## Scope
 
