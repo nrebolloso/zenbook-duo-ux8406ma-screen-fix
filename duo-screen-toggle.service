@@ -1,0 +1,12 @@
+[Unit]
+Description=ASUS Zenbook Duo screen-toggle button (right of F12) handler
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/duo-screen-toggle
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
